@@ -6,5 +6,10 @@
     "dev:mobile": "pnpm -C mobile dev",
     "build:mobile": "pnpm -C mobile build",
     "start:api": "pnpm -C api start"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
