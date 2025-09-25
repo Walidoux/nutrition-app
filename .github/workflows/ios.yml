@@ -1,4 +1,5 @@
 name: ios
+
 on:
   workflow_dispatch:
   push:
@@ -9,7 +10,6 @@ jobs:
     strategy:
       matrix:
         flavor: [dev, prod]
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,21 +25,25 @@ jobs:
           pnpm -v
           pnpm install
 
-      # IMPORTANT: set live URL BEFORE sync so Info.plist gets it
-      - name: Set live URL for dev
-        if: matrix.flavor == 'dev'
-        run: echo "CAPACITOR_LIVE_URL=${{ vars.DEV_SERVER_URL }}" >> $GITHUB_ENV
+      - name: Approve build scripts for CI
+        run: |
+          pnpm approve-builds esbuild @tailwindcss/oxide @swc/core || true
 
-      # Ensure dist exists so `cap sync` won't fail
-      # Option 1 (fast): placeholder index.html for dev
-      - name: Create placeholder dist (dev)
+      - name: Ensure DEV_SERVER_URL is set (dev only)
+        if: matrix.flavor == 'dev'
+        run: |
+          if [ -z "${{ vars.DEV_SERVER_URL }}" ]; then
+            echo "Missing DEV_SERVER_URL Actions variable (e.g. http://192.168.1.50:5173)"; exit 1;
+          fi
+          echo "CAPACITOR_LIVE_URL=${{ vars.DEV_SERVER_URL }}" >> $GITHUB_ENV
+
+      - name: Create placeholder dist (dev only)
         if: matrix.flavor == 'dev'
         run: |
           mkdir -p mobile/dist
           printf '<!doctype html><html><head><meta charset="utf-8"><title>dev</title></head><body>dev</body></html>' > mobile/dist/index.html
 
-      # Option 2 (prod): real build + copy
-      - name: Build web (prod)
+      - name: Build web (prod only)
         if: matrix.flavor == 'prod'
         working-directory: mobile
         run: |
@@ -50,7 +54,7 @@ jobs:
         working-directory: mobile
         run: npx cap add ios
 
-      - name: Sync Capacitor (updates iOS project + copies web assets)
+      - name: Sync Capacitor
         working-directory: mobile
         run: npx cap sync ios
 
@@ -71,4 +75,25 @@ jobs:
         run: |
           set -e
           cd mobile
-          xcodebuild -workspace ios/App/App.xcworkspace
+          xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package IPA
+        run: |
+          set -e
+          cd mobile
+          BUILD_DIR=$(xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -showBuildSettings | awk '/TARGET_BUILD_DIR/ {print $3; exit}')
+          APP_PATH="$BUILD_DIR/App.app"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="MyApp-${{ matrix.flavor }}.ipa"
+          zip -r "$IPA_NAME" Payload >/dev/null
+          mv "$IPA_NAME" ..
+          rm -rf Payload
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyApp-${{ matrix.flavor }}.ipa
+          path: MyApp-${{ matrix.flavor }}.ipa
