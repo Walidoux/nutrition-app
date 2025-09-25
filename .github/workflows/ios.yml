@@ -27,7 +27,7 @@ jobs:
 
       - name: Approve build scripts for CI
         run: |
-          pnpm approve-builds esbuild @tailwindcss/oxide @swc/core || true
+          pnpm -w approve-builds -y esbuild @tailwindcss/oxide @swc/core
 
       - name: Ensure DEV_SERVER_URL is set (dev only)
         if: matrix.flavor == 'dev'
