@@ -1,3 +1,6 @@
 packages:
-  - 'api'
-  - 'mobile'
+  - api
+  - mobile
+
+ignoredBuiltDependencies:
+  - '@tailwindcss/oxide'
