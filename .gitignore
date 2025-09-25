@@ -1,7 +1,5 @@
 # node
 node_modules
-pnpm-lock.yaml
-.pnpm-store
 
 # build
 dist

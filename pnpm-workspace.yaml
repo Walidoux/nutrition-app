@@ -1,6 +1,0 @@
-packages:
-  - api
-  - mobile
-
-ignoredBuiltDependencies:
-  - '@tailwindcss/oxide'

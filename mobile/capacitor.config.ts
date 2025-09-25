@@ -8,7 +8,8 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: liveUrl
     ? {
-        url: liveUrl
+        url: liveUrl,
+        cleartext: true
       }
     : undefined
 }

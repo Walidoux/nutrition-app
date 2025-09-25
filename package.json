@@ -1,15 +1,17 @@
 {
   "name": "personal-ios-capacitor-stack",
   "private": true,
+  "workspaces": [
+    "api",
+    "mobile"
+  ],
   "scripts": {
-    "dev:api": "pnpm -C api dev",
-    "dev:mobile": "pnpm -C mobile dev",
-    "build:mobile": "pnpm -C mobile build",
-    "start:api": "pnpm -C api start"
+    "dev:api": "bun --cwd api run dev",
+    "dev:mobile": "bun --cwd mobile run dev",
+    "start:api": "bun --cwd api run start",
+    "build:mobile": "bun --cwd mobile run build"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
-  }
+  "trustedDependencies": [
+    "@tailwindcss/oxide"
+  ]
 }

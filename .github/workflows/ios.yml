@@ -1,65 +1,54 @@
 name: ios
-
 on:
   workflow_dispatch:
   push:
 
 jobs:
-  build:
+  build-dev:
     runs-on: macos-latest
-    strategy:
-      matrix:
-        flavor: [dev, prod]
+    timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.1.x
+
+      - name: Setup Node (for npx cap)
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Enable corepack + install deps
-        run: |
-          corepack enable
-          pnpm -v
-          pnpm install
+      - name: Install deps (workspaces)
+        run: bun install
 
-      - name: Approve build scripts for CI
+        # Normalize DEV_SERVER_URL -> CAPACITOR_LIVE_URL, ensuring scheme+port
+      - name: Set CAPACITOR_LIVE_URL
         run: |
-          pnpm approve-builds esbuild @tailwindcss/oxide @swc/core || true
-
-      - name: Ensure DEV_SERVER_URL is set (dev only)
-        if: matrix.flavor == 'dev'
-        run: |
-          if [ -z "${{ vars.DEV_SERVER_URL }}" ]; then
-            echo "Missing DEV_SERVER_URL Actions variable (e.g. http://192.168.1.50:5173)"; exit 1;
+          LIVE="${{ vars.DEV_SERVER_URL }}"
+          if [ -z "$LIVE" ]; then
+            echo "Set DEV_SERVER_URL in Actions Variables (e.g. http://192.168.3.5:5173)"; exit 1;
           fi
-          echo "CAPACITOR_LIVE_URL=${{ vars.DEV_SERVER_URL }}" >> $GITHUB_ENV
+          [[ "$LIVE" =~ ^https?:// ]] || LIVE="http://$LIVE"
+          [[ "$LIVE" =~ :[0-9]+$ ]] || LIVE="$LIVE:5173"
+          echo "CAPACITOR_LIVE_URL=$LIVE" >> $GITHUB_ENV
+          echo "Using $LIVE"
 
-      - name: Create placeholder dist (dev only)
-        if: matrix.flavor == 'dev'
+      - name: Create placeholder dist (so cap sync doesn't complain)
         run: |
           mkdir -p mobile/dist
-          printf '<!doctype html><html><head><meta charset="utf-8"><title>dev</title></head><body>dev</body></html>' > mobile/dist/index.html
+          echo '<!doctype html><html><body>dev</body></html>' > mobile/dist/index.html
 
-      - name: Build web (prod only)
-        if: matrix.flavor == 'prod'
-        working-directory: mobile
-        run: |
-          pnpm build
-          npx cap copy ios
-
-      - name: Add iOS platform
+      - name: Add iOS
         working-directory: mobile
         run: npx cap add ios
 
-      - name: Sync Capacitor
+      - name: Sync iOS (uses CAPACITOR_LIVE_URL)
         working-directory: mobile
         run: npx cap sync ios
 
-      - name: Allow HTTP for dev in Info.plist
-        if: matrix.flavor == 'dev'
+      - name: Allow HTTP in Info.plist (dev)
         working-directory: mobile
         run: |
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" ios/App/App/Info.plist || true
@@ -72,28 +61,78 @@ jobs:
           pod install
 
       - name: Xcode build (unsigned)
+        working-directory: mobile
         run: |
-          set -e
-          cd mobile
           xcodebuild -workspace ios/App/App.xcworkspace \
             -scheme App -configuration Release -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO build
 
       - name: Package IPA
+        working-directory: mobile
         run: |
-          set -e
-          cd mobile
           BUILD_DIR=$(xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -showBuildSettings | awk '/TARGET_BUILD_DIR/ {print $3; exit}')
           APP_PATH="$BUILD_DIR/App.app"
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          IPA_NAME="MyApp-${{ matrix.flavor }}.ipa"
-          zip -r "$IPA_NAME" Payload >/dev/null
-          mv "$IPA_NAME" ..
-          rm -rf Payload
+          mkdir -p Payload && cp -R "$APP_PATH" Payload/
+          zip -r "../MyApp-dev.ipa" Payload >/dev/null
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: MyApp-${{ matrix.flavor }}.ipa
-          path: MyApp-${{ matrix.flavor }}.ipa
+          name: MyApp-dev.ipa
+          path: MyApp-dev.ipa
+
+  build-prod:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.1.x
+
+      - name: Setup Node (for npx cap)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps (workspaces)
+        run: bun install
+
+      - name: Build web
+        working-directory: mobile
+        run: |
+          bun run build
+
+      - name: Add/sync iOS
+        working-directory: mobile
+        run: |
+          npx cap add ios
+          npx cap copy ios
+          npx cap sync ios
+
+      - name: Install CocoaPods
+        run: |
+          sudo gem install cocoapods -N
+          cd mobile/ios/App
+          pod install
+
+      - name: Xcode build (unsigned)
+        working-directory: mobile
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package IPA
+        working-directory: mobile
+        run: |
+          BUILD_DIR=$(xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -showBuildSettings | awk '/TARGET_BUILD_DIR/ {print $3; exit}')
+          APP_PATH="$BUILD_DIR/App.app"
+          mkdir -p Payload && cp -R "$APP_PATH" Payload/
+          zip -r "../MyApp-prod.ipa" Payload >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyApp-prod.ipa
+          path: MyApp-prod.ipa
