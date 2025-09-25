@@ -1,0 +1,83 @@
+name: ios
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        flavor: [dev, prod]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable corepack + install deps
+        run: |
+          corepack enable
+          pnpm -v
+          pnpm install
+
+      - name: Set live URL for dev
+        if: matrix.flavor == 'dev'
+        run: echo "CAPACITOR_LIVE_URL=${{ vars.DEV_SERVER_URL }}" >> $GITHUB_ENV
+
+      - name: Build web (prod only)
+        if: matrix.flavor == 'prod'
+        working-directory: mobile
+        run: pnpm build
+
+      - name: Add iOS platform
+        working-directory: mobile
+        run: npx cap add ios
+
+      - name: Sync Capacitor
+        working-directory: mobile
+        run: npx cap sync ios
+
+      - name: Allow HTTP for dev in Info.plist
+        if: matrix.flavor == 'dev'
+        working-directory: mobile
+        run: |
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool YES" ios/App/App/Info.plist || true
+
+      - name: Install CocoaPods
+        run: |
+          sudo gem install cocoapods -N
+          cd mobile/ios/App
+          pod install
+
+      - name: Xcode build (unsigned)
+        run: |
+          set -e
+          cd mobile
+          xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package IPA
+        run: |
+          set -e
+          cd mobile
+          BUILD_DIR=$(xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -showBuildSettings | awk '/TARGET_BUILD_DIR/ {print $3; exit}')
+          APP_PATH="$BUILD_DIR/App.app"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="MyApp-${{ matrix.flavor }}.ipa"
+          zip -r "$IPA_NAME" Payload >/dev/null
+          mv "$IPA_NAME" ..
+          rm -rf Payload
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyApp-${{ matrix.flavor }}.ipa
+          path: MyApp-${{ matrix.flavor }}.ipa

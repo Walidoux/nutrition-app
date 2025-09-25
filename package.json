@@ -1,0 +1,10 @@
+{
+  "name": "personal-ios-capacitor-stack",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm -C api dev",
+    "dev:mobile": "pnpm -C mobile dev",
+    "build:mobile": "pnpm -C mobile build",
+    "start:api": "pnpm -C api start"
+  }
+}

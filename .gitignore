@@ -1,0 +1,16 @@
+# node
+node_modules
+pnpm-lock.yaml
+.pnpm-store
+
+# build
+dist
+build
+
+# env
+.env
+**/.env*
+!.env.example
+
+# misc
+.DS_Store
