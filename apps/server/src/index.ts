@@ -22,6 +22,10 @@ app.post('/ocr/receipt', async (req, reply) => {
   let now = Date.now()
   const file = (await req.file())!
   const buf = await file.toBuffer()
+
+  console.log('File buffer finished in', Date.now() - now, 'ms')
+  now = Date.now()
+
   const prepped = await sharp(buf) // paddle’s angle classifier already helps with rotation
     .rotate()
     .resize({ width: 2000, withoutEnlargement: true })

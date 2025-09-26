@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
 
 type ScreenContentProps = {
@@ -26,6 +26,7 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
 
     if (shot.canceled) return;
     setBusy(true);
+    setResult(undefined)
 
     const asset = shot.assets[0];
     const form = new FormData();
@@ -56,28 +57,49 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
     setBusy(false);
   };
 
+  const renderItem = ({ item }: any) => (
+    <View style={styles.listItem}>
+      <Text style={styles.itemText}>Nom du produit : {item.name}</Text>
+      <Text style={styles.itemText}>Prix : {item.price}</Text>
+      <Text style={styles.itemText}>Quantité : {item.quantity}</Text>
+    </View>
+  );
+
+  const styles = StyleSheet.create({
+    listItem: {
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      marginBottom: 20,
+    },
+    bullet: {
+      fontSize: 20,
+      marginRight: 10,
+    },
+    itemText: {
+      fontSize: 16,
+    },
+  });
+
   return (
-    <View className={styles.container}>
-      <Text className={styles.title}>{title}</Text>
-      <View className={styles.separator} />
+    <View className={test.container}>
+      <Text className={test.title}>{title}</Text>
+      <View className={test.separator} />
       <View className="flex-1 items-center justify-center gap-4 p-4">
         <Button title={busy ? 'Scanning…' : 'Scan receipt'} onPress={takePhoto} disabled={busy} />
         {result?.parsed && (
-          <ScrollView className="mt-4 max-h-80 w-full">
-            <Text>Merchant: {result.parsed.merchant ?? '-'}</Text>
+          <>
             <Text>
-              Date/Time: {result.parsed.date ?? '-'} {result.parsed.time ?? ''}
+              You spent {String(result.parsed.totals.paid ?? '-')}{' '}
+              {String(result.parsed.currency ?? '??')}
             </Text>
-            <Text>Subtotal: {String(result.parsed.subtotal ?? '-')}</Text>
-            <Text>Tax: {String(result.parsed.tax ?? '-')}</Text>
-            <Text>Total: {String(result.parsed.total ?? '-')}</Text>
+            <Text>You bought {String(result.parsed.totals.itemsTotal ?? '-')} items</Text>
             <Text className="mt-2 font-bold">Items</Text>
-            {result.parsed.items?.map((it: any, i: number) => (
-              <Text key={i}>
-                {it.name} — {it.price}
-              </Text>
-            ))}
-          </ScrollView>
+            <FlatList
+              data={result.parsed.items}
+              renderItem={renderItem}
+              keyExtractor={(item) => item.name}
+            />
+          </>
         )}
       </View>
 
@@ -85,7 +107,8 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
     </View>
   );
 };
-const styles = {
+
+const test = {
   container: `items-center flex-1 justify-center`,
   separator: `h-[1px] my-7 w-4/5 bg-gray-200`,
   title: `text-xl font-bold`,

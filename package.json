@@ -2,8 +2,8 @@
   "name": "personal-ios-capacitor-stack",
   "private": true,
   "workspaces": [
-    "api",
-    "mobile"
+    "apps/server",
+    "apps/mobile"
   ],
   "scripts": {
     "dev:server": "bun run -C apps/server dev",
