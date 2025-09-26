@@ -2,137 +2,47 @@ name: ios
 on:
   workflow_dispatch:
   push:
+    branches: [main]
 
 jobs:
-  build-dev:
-    runs-on: macos-latest
-    timeout-minutes: 45
+  build-ios:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: apps/mobile
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Setup Node (for npx cap)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Install deps (workspaces)
         run: bun install
 
-        # Normalize DEV_SERVER_URL -> CAPACITOR_LIVE_URL, ensuring scheme+port
-      - name: Set CAPACITOR_LIVE_URL
-        run: |
-          LIVE="${{ vars.DEV_SERVER_URL }}"
-          if [ -z "$LIVE" ]; then
-            echo "Set DEV_SERVER_URL in Actions Variables (e.g. http://192.168.3.5:5173)"; exit 1;
-          fi
-          [[ "$LIVE" =~ ^https?:// ]] || LIVE="http://$LIVE"
-          [[ "$LIVE" =~ :[0-9]+$ ]] || LIVE="$LIVE:5173"
-          echo "CAPACITOR_LIVE_URL=$LIVE" >> $GITHUB_ENV
-          echo "Using $LIVE"
-
-      - name: Create placeholder dist (so cap sync doesn't complain)
-        run: |
-          mkdir -p mobile/dist
-          echo '<!doctype html><html><body>dev</body></html>' > mobile/dist/index.html
-
-      - name: Add iOS
-        working-directory: mobile
-        run: npx cap add ios
-
-      - name: Sync iOS (uses CAPACITOR_LIVE_URL)
-        working-directory: mobile
-        run: npx cap sync ios
-
-      - name: Allow HTTP in Info.plist (dev)
-        working-directory: mobile
-        run: |
-          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" ios/App/App/Info.plist || true
-          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool YES" ios/App/App/Info.plist || true
+      - name: Prebuild iOS (no native install)
+        run: bunx --bun expo prebuild -p ios --clean --no-install
 
       - name: Install CocoaPods
         run: |
           sudo gem install cocoapods -N
-          cd mobile/ios/App
-          pod install
+          cd ios && pod install --repo-update
 
-      - name: Xcode build (unsigned)
-        working-directory: mobile
+      - name: Build .app (skip signing)
         run: |
-          xcodebuild -workspace ios/App/App.xcworkspace \
-            -scheme App -configuration Release -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO build
-
-      - name: Package IPA
-        working-directory: mobile
-        run: |
-          BUILD_DIR=$(xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -showBuildSettings | awk '/TARGET_BUILD_DIR/ {print $3; exit}')
-          APP_PATH="$BUILD_DIR/App.app"
-          mkdir -p Payload && cp -R "$APP_PATH" Payload/
-          zip -r "../MyApp-dev.ipa" Payload >/dev/null
+          cd ios
+          # Set your scheme; it usually matches the "name" in app.config.ts without spaces.
+          SCHEME="AcmeMobile"
+          xcodebuild -scheme "$SCHEME" -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1 -print -quit)
+          echo "Found app at: $APP_PATH"
+          mkdir -p payload/Payload
+          cp -R "$APP_PATH" payload/Payload
+          cd payload
+          zip -yr ../AcmeMobile-unsigned.ipa .
+          cd ..
+          mv AcmeMobile-unsigned.ipa ../../AcmeMobile-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MyApp-dev.ipa
-          path: MyApp-dev.ipa
-
-  build-prod:
-    runs-on: macos-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Setup Node (for npx cap)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install deps (workspaces)
-        run: bun install
-
-      - name: Build web
-        working-directory: mobile
-        run: |
-          bun run build
-
-      - name: Add/sync iOS
-        working-directory: mobile
-        run: |
-          npx cap add ios
-          npx cap copy ios
-          npx cap sync ios
-
-      - name: Install CocoaPods
-        run: |
-          sudo gem install cocoapods -N
-          cd mobile/ios/App
-          pod install
-
-      - name: Xcode build (unsigned)
-        working-directory: mobile
-        run: |
-          xcodebuild -workspace ios/App/App.xcworkspace \
-            -scheme App -configuration Release -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO build
-
-      - name: Package IPA
-        working-directory: mobile
-        run: |
-          BUILD_DIR=$(xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -showBuildSettings | awk '/TARGET_BUILD_DIR/ {print $3; exit}')
-          APP_PATH="$BUILD_DIR/App.app"
-          mkdir -p Payload && cp -R "$APP_PATH" Payload/
-          zip -r "../MyApp-prod.ipa" Payload >/dev/null
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: MyApp-prod.ipa
-          path: MyApp-prod.ipa
+          name: AcmeMobile-unsigned
+          path: apps/mobile/AcmeMobile-unsigned.ipa

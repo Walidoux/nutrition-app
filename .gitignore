@@ -1,14 +1,11 @@
-# node
 node_modules
-
-# build
 dist
-build
-
-# env
-.env
-**/.env*
-!.env.example
-
-# misc
+.build
 .DS_Store
+apps/mobile/.expo
+apps/mobile/.expo-shared
+apps/mobile/ios/build
+apps/mobile/android/app/build
+.env*
+coverage
+tmp
