@@ -4,7 +4,8 @@ import 'dotenv/config'
 import Fastify from 'fastify'
 
 import { db } from './db/client'
-import { buildSystemPrompt, streamToBuffer } from './parser'
+import { API } from './lib'
+import { buildSystemPrompt, buildUserPrompt, streamToBuffer } from './parser'
 
 const app = Fastify()
 
@@ -18,21 +19,17 @@ app.get('/users', async () => {
   return { users }
 })
 
-app.post('/ocr/receipt', async (req, reply) => {
+app.post(API.SCAN_RECEIPT, async (req, reply) => {
   let now = Date.now()
-
-  console.log('received endpoint /ocr/receipt')
 
   const file = (await req.file({ limits: { fileSize: 20 * 1024 * 1024 } }))!
   const buf = await streamToBuffer(file.file)
   const base64 = buf.toString('base64')
 
-  console.log('Reading file took ', Date.now() - now, 'ms')
+  console.log('Reading file took', Date.now() - now, 'ms')
   now = Date.now()
 
-  const system = buildSystemPrompt()
   const imageUrl = `data:${file.mimetype};base64,${base64}`
-
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -46,11 +43,11 @@ app.post('/ocr/receipt', async (req, reply) => {
       top_p: 1,
       stream: false,
       messages: [
-        { role: 'system', content: system },
+        { role: 'system', content: buildSystemPrompt() },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Extract the structured receipt JSON for this image.' },
+            { type: 'text', text: buildUserPrompt() },
             { type: 'image_url', image_url: { url: imageUrl } }
           ]
         }
@@ -58,13 +55,12 @@ app.post('/ocr/receipt', async (req, reply) => {
     })
   })
 
-  const result = await response.json()
-  const fullContent = result.choices[0].message.content
+  const result = await response.text()
+  const json = JSON.parse(result.replaceAll('```', '')) // sometimes the model returns code blocks, we need to remove them
+  const fullContent = json.choices[0].message.content
 
+  console.log('Processing took', Date.now() - now, 'ms')
   console.log(fullContent)
-
-  console.log('Processing took ', Date.now() - now, 'ms')
-  now = Date.now()
 
   return reply.send(fullContent)
 })

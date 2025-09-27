@@ -1,10 +1,10 @@
 import { Text } from 'react-native';
 import { Container } from '~/components/Container';
 
-export default function Page() {
+export default function View() {
   return (
     <Container>
-      <Text> welcome home nigga</Text>
+      <Text>budgets</Text>
     </Container>
   );
 }

@@ -1,21 +1,53 @@
-import { Audio } from 'expo-av';
-import * as Haptics from 'expo-haptics';
+import { useAudioPlayer } from 'expo-audio';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, FlatList, Platform, StyleSheet, Text, View } from 'react-native';
+import { API } from '../../server/src/lib';
 import { Button } from './Button';
-
-type ScreenContentProps = {
-  title: string;
-  path: string;
-  children?: React.ReactNode;
-};
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL!;
 
-export const ScreenContent = ({ title, path, children }: ScreenContentProps) => {
+export const ScreenContent = () => {
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const player = useAudioPlayer(require('../assets/sounds/success.m4a'));
+
+  const uploadReceipt = async (asset: any) => {
+    setBusy(true);
+    setResult(undefined);
+
+    const form = new FormData();
+    form.append('image', {
+      uri: asset.uri,
+      name: asset.fileName ?? 'receipt.jpg',
+      type: asset.mimeType ?? 'image/jpeg',
+    } as any);
+
+    try {
+      const res = await fetch(apiUrl + API.SCAN_RECEIPT, {
+        method: 'POST',
+        body: form,
+      });
+
+      console.log(res);
+
+      if (!res.ok) {
+        const message = ['Upload failed', res.status, res.statusText];
+        console.log(...message);
+        alert(message.join('\n'));
+        return;
+      }
+
+      const data = await res.json();
+      player.play();
+      setResult(data);
+    } catch (err) {
+      console.error('Upload error', err);
+      alert(`Upload failed\n${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -27,60 +59,56 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
     });
 
     if (shot.canceled) return;
-    setBusy(true);
-    setResult(undefined);
+    await uploadReceipt(shot.assets[0]);
+  };
 
-    const asset = shot.assets[0];
-    const form = new FormData();
+  const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return alert('Photo library permission denied');
 
-    form.append('image', {
-      uri: asset.uri,
-      name: asset.fileName ?? 'receipt.jpg',
-      type: asset.mimeType ?? 'image/jpeg',
-    } as any);
-
-    console.log(`Uploading receipt to ${apiUrl}/ocr/receipt`, shot.assets[0]);
-    const res = await fetch(`${apiUrl}/ocr/receipt`, {
-      method: 'POST',
-      body: form,
+    const pick = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      allowsMultipleSelection: false,
     });
 
-    console.log(res);
+    if (pick.canceled) return;
+    await uploadReceipt(pick.assets[0]);
+  };
 
-    if (!res.ok) {
-      const message = ['Upload failed', res.status, res.statusText, data];
-      console.log(...message);
-      setBusy(false);
-      return alert(message.join('\n'));
-    }
-
-    const data = await res.json();
-
-    setResult(data);
-    setBusy(false);
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true }); // play even on silent
-      const { sound } = await Audio.Sound.createAsync(require('../assets/sounds/success.m4a'), {
-        shouldPlay: true,
-      });
-
-      // Auto-unload when done
-      sound.setOnPlaybackStatusUpdate((status: any) => {
-        if (status?.didJustFinish) sound.unloadAsync();
-      });
-    } catch (err) {
-      console.warn('Failed to play success sound', err);
+  const chooseSource = () => {
+    if (busy) return;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Scan receipt',
+          options: ['Take Photo', 'Choose from Photos', 'Cancel'],
+          cancelButtonIndex: 2,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) takePhoto();
+          if (buttonIndex === 1) pickPhoto();
+        }
+      );
+    } else if (Platform.OS === 'android') {
+      Alert.alert('Scan receipt', 'Choose a source', [
+        { text: 'Camera', onPress: takePhoto },
+        { text: 'Photos', onPress: pickPhoto },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      // Web or other platforms: default to picking from library
+      pickPhoto();
     }
   };
 
   const renderItem = ({ item }: any) => (
     <View style={styles.listItem}>
       <Text style={styles.itemText}>Nom du produit : {item.name}</Text>
-      <Text style={styles.itemText}>Prix : {item.price}</Text>
+      <Text style={styles.itemText}>Prix : {item.unitPrice}</Text>
       <Text style={styles.itemText}>Quantité : {item.quantity}</Text>
+      <Text style={styles.itemText}>Quantité : {item.unit}</Text>
+      <Text style={styles.itemText}>Quantité : {item.amount}</Text>
     </View>
   );
 
@@ -101,25 +129,25 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
 
   return (
     <View className={test.container}>
-      <Text className={test.title}>{title}</Text>
-      <View className={test.separator} />
       <View className="flex-1 items-center justify-center gap-4 p-4">
-        <Button title={busy ? 'Scanning…' : 'Scan receipt'} onPress={takePhoto} disabled={busy} />
-        {result?.parsed && (
+        <Button
+          title={busy ? 'Scanning…' : 'Scan receipt'}
+          onPress={chooseSource}
+          disabled={busy}
+        />
+        {result && (
           <>
-            <Text>You spent {String(result.parsed.totals.paid ?? '-')} MAD</Text>
-            <Text>You bought {String(result.parsed.totals.itemsTotal ?? '-')} items</Text>
+            <Text>You spent {String(result.totals.paid ?? '-')} MAD</Text>
+            <Text>You bought {String(result.items.length ?? '-')} items</Text>
             <Text className="mt-2 font-bold">Items</Text>
             <FlatList
-              data={result.parsed.items}
+              data={result.items}
               renderItem={renderItem}
               keyExtractor={(item) => item.name}
             />
           </>
         )}
       </View>
-
-      {children}
     </View>
   );
 };
