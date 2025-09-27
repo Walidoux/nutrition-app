@@ -1,11 +1,10 @@
 node_modules
 dist
 .build
-.DS_Store
-apps/mobile/.expo
-apps/mobile/.expo-shared
-apps/mobile/ios/build
-apps/mobile/android/app/build
+web-build/
+.expo
+.expo-shared
+ios
+android
 .env*
-coverage
-tmp
+.metro-health-check*

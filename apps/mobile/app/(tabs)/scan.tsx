@@ -1,12 +1,13 @@
+import { API } from '@nutrition-app/server/src/lib'
 import { useAudioPlayer } from 'expo-audio'
 import * as ImagePicker from 'expo-image-picker'
 import { useState } from 'react'
 import { ActionSheetIOS, FlatList, Text, View } from 'react-native'
+import { Button } from '~/components/Button'
 
-import { API } from '../../server/src/lib'
-import { Button } from './Button'
+import { Container } from '~/components/Container'
 
-export const ScreenContent = () => {
+export default function Screen() {
   const [result, setResult] = useState<any>(null)
   const [busy, setBusy] = useState(false)
   const player = useAudioPlayer(require('../assets/sounds/success.m4a'))
@@ -101,18 +102,20 @@ export const ScreenContent = () => {
   )
 
   return (
-    <View className='items-center flex-1 justify-center'>
-      <View className='flex-1 items-center justify-center gap-4 p-4'>
-        <Button title={busy ? 'Scanning…' : 'Scan receipt'} onPress={chooseSource} disabled={busy} />
-        {result && (
-          <>
-            <Text>You spent {String(result.totals.paid ?? '-')} MAD</Text>
-            <Text>You bought {String(result.items.length ?? '-')} items</Text>
-            <Text className='mt-2 font-bold'>Items</Text>
-            <FlatList data={result.items} renderItem={renderItem} keyExtractor={(item) => item.name} />
-          </>
-        )}
+    <Container>
+      <View className='items-center flex-1 justify-center'>
+        <View className='flex-1 items-center justify-center gap-4 p-4'>
+          <Button title={busy ? 'Scanning…' : 'Scan receipt'} onPress={chooseSource} disabled={busy} />
+          {result && (
+            <>
+              <Text>You spent {String(result.totals.paid ?? '-')} MAD</Text>
+              <Text>You bought {String(result.items.length ?? '-')} items</Text>
+              <Text className='mt-2 font-bold'>Items</Text>
+              <FlatList data={result.items} renderItem={renderItem} keyExtractor={(item) => item.name} />
+            </>
+          )}
+        </View>
       </View>
-    </View>
+    </Container>
   )
 }

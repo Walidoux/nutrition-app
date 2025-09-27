@@ -1,5 +1,5 @@
 {
-  "name": "personal-ios-capacitor-stack",
+  "name": "@nutrition-app/core",
   "private": true,
   "workspaces": [
     "apps/server",
@@ -16,6 +16,7 @@
     "@tailwindcss/oxide"
   ],
   "devDependencies": {
+    "@biomejs/biome": "2.2.4",
     "typescript": "^5.6.2"
   }
 }
