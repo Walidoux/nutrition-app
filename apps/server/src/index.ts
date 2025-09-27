@@ -2,12 +2,12 @@ import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import 'dotenv/config'
 import Fastify from 'fastify'
-import sharp from 'sharp'
+
 import { db } from './db/client'
-import { callPaddleOcr } from './ocr'
-import { parseReceiptFromOcr } from './parser'
+import { buildSystemPrompt, streamToBuffer } from './parser'
 
 const app = Fastify()
+
 await app.register(cors, { origin: true, credentials: true })
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -20,35 +20,53 @@ app.get('/users', async () => {
 
 app.post('/ocr/receipt', async (req, reply) => {
   let now = Date.now()
-  const file = (await req.file())!
-  const buf = await file.toBuffer()
 
-  console.log('File buffer finished in', Date.now() - now, 'ms')
+  console.log('received endpoint /ocr/receipt')
+
+  const file = (await req.file({ limits: { fileSize: 20 * 1024 * 1024 } }))!
+  const buf = await streamToBuffer(file.file)
+  const base64 = buf.toString('base64')
+
+  console.log('Reading file took ', Date.now() - now, 'ms')
   now = Date.now()
 
-  const prepped = await sharp(buf) // paddle’s angle classifier already helps with rotation
-    .rotate()
-    .resize({ width: 2000, withoutEnlargement: true })
-    .grayscale()
-    .normalize()
-    .median(1)
-    .sharpen()
-    .toFormat('png')
-    .toBuffer()
+  const system = buildSystemPrompt()
+  const imageUrl = `data:${file.mimetype};base64,${base64}`
 
-  console.log('Sharp finished in', Date.now() - now, 'ms')
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: process.env.OPENROUTER_MODEL,
+      max_tokens: 2048,
+      temperature: 0.2,
+      top_p: 1,
+      stream: false,
+      messages: [
+        { role: 'system', content: system },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Extract the structured receipt JSON for this image.' },
+            { type: 'image_url', image_url: { url: imageUrl } }
+          ]
+        }
+      ]
+    })
+  })
+
+  const result = await response.json()
+  const fullContent = result.choices[0].message.content
+
+  console.log(fullContent)
+
+  console.log('Processing took ', Date.now() - now, 'ms')
   now = Date.now()
 
-  const ocr = await callPaddleOcr(prepped)
-  console.log('OCR finished in', Date.now() - now, 'ms')
-  console.log(ocr)
-  now = Date.now()
-  const parsed = parseReceiptFromOcr(ocr)
-  console.log('Parse finished in', Date.now() - now, 'ms')
-
-  console.log(parsed)
-
-  return { parsed, ocr }
+  return reply.send(fullContent)
 })
 
 const port = Number(process.env.PORT ?? 3000)

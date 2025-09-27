@@ -1,7 +1,0 @@
-numpy==1.26.4
-opencv-python-headless==4.9.0.80
-paddlepaddle==2.6.1
-paddleocr==2.7.3
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-python-multipart==0.0.9

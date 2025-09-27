@@ -9,18 +9,7 @@ services:
     volumes:
       - pg:/var/lib/postgresql/data
     ports:
-      - '5433:5432'
-
-  ocr:
-    build:
-      context: ./services/ocr
-    environment:
-      - OCR_LANGS=en,french,arabic
-    ports:
-      - '8000:8000'
-    volumes:
-      - ocr-models:/app/.paddleocr
+      - "5433:5432"
 
 volumes:
   pg:
-  ocr-models:

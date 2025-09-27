@@ -1,3 +1,5 @@
+import { Audio } from 'expo-av';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
@@ -26,7 +28,7 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
 
     if (shot.canceled) return;
     setBusy(true);
-    setResult(undefined)
+    setResult(undefined);
 
     const asset = shot.assets[0];
     const form = new FormData();
@@ -43,7 +45,7 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
       body: form,
     });
 
-    const data = await res.json();
+    console.log(res);
 
     if (!res.ok) {
       const message = ['Upload failed', res.status, res.statusText, data];
@@ -52,9 +54,26 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
       return alert(message.join('\n'));
     }
 
-    console.log(data);
+    const data = await res.json();
+
     setResult(data);
     setBusy(false);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true }); // play even on silent
+      const { sound } = await Audio.Sound.createAsync(require('../assets/sounds/success.m4a'), {
+        shouldPlay: true,
+      });
+
+      // Auto-unload when done
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status?.didJustFinish) sound.unloadAsync();
+      });
+    } catch (err) {
+      console.warn('Failed to play success sound', err);
+    }
   };
 
   const renderItem = ({ item }: any) => (
@@ -88,10 +107,7 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
         <Button title={busy ? 'Scanning…' : 'Scan receipt'} onPress={takePhoto} disabled={busy} />
         {result?.parsed && (
           <>
-            <Text>
-              You spent {String(result.parsed.totals.paid ?? '-')}{' '}
-              {String(result.parsed.currency ?? '??')}
-            </Text>
+            <Text>You spent {String(result.parsed.totals.paid ?? '-')} MAD</Text>
             <Text>You bought {String(result.parsed.totals.itemsTotal ?? '-')} items</Text>
             <Text className="mt-2 font-bold">Items</Text>
             <FlatList
